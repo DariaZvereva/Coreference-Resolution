@@ -5,6 +5,7 @@ from Russian import documents
 from Russian import corpora
 import spans
 import logging
+from Russian import mention_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -24,36 +25,20 @@ f = open("C:/Users/DZvereva/Desktop/book_2_from_open_corpora_2.csv", "r", encodi
 doc = documents.Document_from_NLC("NLC doc", f.readlines(), None, text)
 f.close()
 
-"""
-for prop in properties:
-    if "Offset" in prop:
-        if not (prop["Text"] == doc.tokens[doc.span_by_offset[int(prop["Offset"])]]):
-            print(prop["Text"], "!=", doc.tokens[doc.span_by_offset[int(prop["Offset"])]])
+names = mention_extractor.extract_system_mentions_names(doc)
+pronouns = mention_extractor.extract_system_pronoun_mentions(doc)
+np = mention_extractor.extract_system_np_mentions(doc)
 
-"""
+print("Names")
+for men in names:
+    print([a["Text"] if "Text" in a else "" for a in men.document.tokens_properties[men.span.begin:men.span.end+1]])
+print("Pronouns")
+for men in pronouns:
+    print([a["Text"] for a in men.document.tokens_properties[men.span.begin:men.span.end + 1]])
+print("NP")
+for men in np:
+    print([a["Text"] for a in men.document.tokens_properties[men.span.begin:men.span.end+1]])
 
-for i in range(len(doc.tokens_properties)):
-    if "SP" in doc.tokens_properties[i]:
-        if doc.tokens_properties[i]["SP"] == doc.SP_NOUN and i in doc.children:
-            print(i, "=============")#, doc.tokens_properties[i], doc.tokens_properties[
-                #doc.span_by_offset[int(doc.tokens_properties[i]["Offset"])]])
-            np = doc.get_subtree_span(i, spans.Span(i, i))
-            print(np)
-            print([a["Text"] for a in doc.tokens_properties[np.begin:np.end+1]])
-            print("-------------------")
-"""
-for i in range(131, 163):
-    #print(i)
-    if int(doc.tokens_properties[i]["Offset"]) == 1048:
-        print(doc.tokens_properties[i]["ParentOffset"])
-        print(doc.tokens_properties[i]["Offset"])
-print(doc.tokens_properties[int(doc.span_by_offset[1117])])
-print(doc.tokens_properties[int(doc.span_by_offset[1048])])
-print(doc.tokens_properties[int(doc.span_by_offset[1150])])
-#np = doc.get_np_span(144, spans.Span(144, 144))
-#print(doc.span_by_offset[1117])
-#print(doc.tokens_properties[154])
-print(doc.text[949: 1180])"""
 
 print("Success")
 

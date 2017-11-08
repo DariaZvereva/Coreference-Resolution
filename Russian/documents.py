@@ -100,8 +100,11 @@ class Document_from_NLC(object):
     SP_INV = "Invariable(1600)"
     SP_PREP = "Preposition(772)"
     SP_ADV = "Adverb(40)"
+    SP_ADJPRO = "AdjectivePronoun(851)"
+    SP_POSESSPRO = "PossessivePronoun(2075)"
+    SP_ADVPRO = "AdverbialPronoun(1887)"
 
-    SERVICE_POS = {SP_CONJ, SP_INV, SP_PREP, SP_ADV}
+    SERVICE_POS = {SP_CONJ, SP_INV, SP_PREP, SP_ADV, SP_ADVPRO}
 
     def __init__(self, identifier, tokens_information, coref, text=""):
         """ Construct a document from tokens and coreference information.
@@ -124,6 +127,7 @@ class Document_from_NLC(object):
         self.tokens_properties = []
         self.span_by_offset = {} #сопоставляет каждому offset span соответствующий токену
         self.text = text
+        self.offsets = []
         self.children = {}  # for every noun write their children (spans)
 
         for inf in tokens_information:
@@ -135,6 +139,9 @@ class Document_from_NLC(object):
 
             if "Offset" in self.tokens_properties[-1]:
                 self.span_by_offset[int(self.tokens_properties[-1]["Offset"])] = len(self.tokens_properties) - 1
+                self.offsets.append(int(self.tokens_properties[-1]["Offset"]))
+            else:
+                self.offsets.append(int(self.tokens_properties[-2]["Offset"]))
 
         for prop in self.tokens_properties:
             if "ParentOffset" in prop and prop["ParentOffset"] is not None and "Offset" in prop and \
@@ -154,15 +161,10 @@ class Document_from_NLC(object):
     def get_subtree_span(self, subtree_root, span, without_serv=True):
         if subtree_root not in self.children or len(self.children[subtree_root]) == 0:
             sp1 = spans.Span(subtree_root, subtree_root)
-            print("[", subtree_root, "]")
             span = span.unite(sp1)
             return span
-        print(subtree_root, self.children[subtree_root])
         for child in self.children[subtree_root]:
             if not (without_serv and self.tokens_properties[child]["SP"] in self.SERVICE_POS):
                 sp2 = self.get_subtree_span(child, span, without_serv=False)
-                # print(sp2, span)
                 span = span.unite(sp2)
-            else:
-                print("!", child)
         return span

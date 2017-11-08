@@ -89,6 +89,7 @@ class Mention:
         """
         if document != None:
             self.document_id = document.identifier
+        self.document = document
         self.span = span
         self.attributes = attributes
 
