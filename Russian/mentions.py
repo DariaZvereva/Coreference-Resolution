@@ -92,6 +92,11 @@ class Mention:
         self.document = document
         self.span = span
         self.attributes = attributes
+        if "tokens" not in self.attributes:
+            self.attributes["tokens"] = []
+            for i in range(span.begin, span.end + 1):
+                self.attributes["tokens"].append(document.tokens_properties[i]["Token"])
+
 
     @staticmethod
     def dummy_from_document(document):
@@ -125,13 +130,13 @@ class Mention:
         """
 
         attributes = {
-            "tokens": document.tokens[span.begin:span.end + 1],
+            "tokens": [prop["token"] for prop in document.token_properties[span.begin, span.end + 1]],
             "pos": [document.morph_tags[i][0] for i in range(span.begin, span.end+1)],
             "antecedent": None,
             "set_id": None,
             "first_in_gold_entity": first_in_gold_entity
         }
-
+        '''
 
         if span.begin > 0:
             attributes["preceding_token"] = document.tokens[span.begin - 1]
@@ -212,7 +217,7 @@ class Mention:
         attributes["ancestry"] = Mention._get_ancestry(dep_tree, index)
 
         attributes["deprel"] = dep_tree[index].deprel
-
+        '''
 
         return Mention(document, span, attributes)
 
@@ -293,14 +298,14 @@ class Mention:
                          self.span.end))
 
     def __str__(self):
-        return (self.document_id +
+        return (str(self.document_id) +
                 ", " +
                 str(self.span) +
                 ": "
                 + " ".join(self.attributes["tokens"]))
 
     def __repr__(self):
-        return (self.document_id +
+        return (str(self.document_id) +
                 ", " +
                 str(self.span) +
                 ": " +

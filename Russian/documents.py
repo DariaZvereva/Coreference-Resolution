@@ -1,5 +1,6 @@
 import spans
 from Russian import mentions
+from bisect import bisect_left
 
 class Document(object):
     """Represents a document.
@@ -15,6 +16,18 @@ class Document(object):
         annotated_mentions list(Mention): All annotated mentions.
         system_mentions list(Mention): The system mentions (initially empty).
     """
+    SP_NOUN = 7
+    SP_PRONOUN = 106178
+    SP_CONJ = 805
+    SP_INV = 1600
+    SP_PREP = 772
+    SP_ADV = 40
+    SP_ADJPRO = 851
+    SP_POSESSPRO = 2075
+    SP_ADVPRO = 1887
+
+    SERVICE_POS = {SP_CONJ, SP_INV, SP_PREP, SP_ADV, SP_ADVPRO}
+
     def __init__(self, identifier, tokens_information, coref, text=""):
         """ Construct a document from tokens and coreference information.
 
@@ -33,30 +46,71 @@ class Document(object):
             coreference set id.
         """
         self.identifier = identifier
-        self.offsets = []
-        self.tokens = []
-        self.morph_tags = []
-        self.sem_class_ids = []
-        self.syntpar = []
-        self.mentions_ids = []
-        self.coref = coref
-        self.span_by_offset = {} #сопоставляет каждому offset span соответствующий токену
+        self.tokens_properties = []
+        self.span_by_offset = {}  # сопоставляет каждому offset span соответствующий токену
         self.text = text
+        self.offsets = []
+        self.children = {}  # for every noun write their children (spans)
+        self.system_mentions = [] #содержит номера mention-ов в массиве tokens_properties
 
         for inf in tokens_information:
 
-            offset, token, morph_tag, id_sem_class, syntpar, id_mention = inf.split("\t")
+           # print(inf.split("\t"))
+            number, offset, sent_num, length, token, lemma, parent_offset, morph_tags, id_sem_class, id_syntpar, id_chain, \
+                id_mention = inf.split("\t")
+            prop = {}
+            prop["NumberInCorpora"] = number
+            prop["Offset"] = int(offset)
+            prop["Sentence"] = int(sent_num)
+            prop["Token"] = token
+            prop["Length"] = length
+            prop["Lemma"] = lemma
+            if parent_offset not in {"-", "NA"}:
+                prop["ParentOffset"] = int(parent_offset)
+            if id_sem_class not in {"-", "NA", ""}:
+                prop["SemClass"] = int(id_sem_class)
+            if id_syntpar not in {"-", "NA"}:
+                prop["SyntParadigm"] = int(id_syntpar)
+            if not id_chain == "-":
+                prop["Chain"] = id_chain
 
-            self.tokens.append(token)
-            self.offsets.append(int(offset))
-            self.morph_tags.append(morph_tag.split(","))
-            self.sem_class_ids.append(id_sem_class)
-            self.syntpar.append(syntpar)
-            self.mentions_ids.append(id_mention)
-            self.span_by_offset[int(offset)] = len(self.tokens) - 1
+            if not id_mention == "-":
+                prop["Mention"] = id_mention
+                self.system_mentions.append(len(self.tokens_properties))
+            prop["Morph"] = morph_tags
+            # выкинем из рассмотрения пунктуацию
+            if prop["Morph"] != 'PNCT':
+                self.tokens_properties.append(prop)
+                # оффсет - это посимвольный сдвиг
+                self.offsets.append(int(offset))
+                # span по сути - номер токена в документе
+                self.span_by_offset[int(offset)] = len(self.tokens_properties) - 1
+
+        # проверка на то, что данные из корпуса собираются хорошо
+        '''if str(identifier) == '2':
+            print("\n".join(tokens_information))
+            print("\n".join([str(a)+":"+str(self.span_by_offset[a]) for a in sorted(self.span_by_offset.keys())]))
+        '''
+
+        for prop in self.tokens_properties:
+            if "ParentOffset" in prop:
+                if not prop["ParentOffset"] in self.offsets:
+
+                    #if not (prop["ParentOffset"] == self.offsets[bisect_left(self.offsets, int(prop["ParentOffset"])) - 1]):
+                    #    print("!", prop["ParentOffset"], self.offsets[bisect_left(self.offsets, int(prop["ParentOffset"])) - 1])
+                    #    print(prop)
+
+                    prop["ParentOffset"] = self.offsets[bisect_left(self.offsets, int(prop["ParentOffset"])) - 1]
+                if self.span_by_offset[int(prop["ParentOffset"])] not in self.children:
+                    self.children[self.span_by_offset[int(prop["ParentOffset"])]] = \
+                        [self.span_by_offset[int(prop["Offset"])]]
+                else:
+                    self.children[self.span_by_offset[int(prop["ParentOffset"])]].append(
+                        self.span_by_offset[int(prop["Offset"])])
+            if self.span_by_offset[int(prop["Offset"])] not in self.children:
+                self.children[self.span_by_offset[int(prop["Offset"])]] = []
 
         #self.annotated_mentions = self.__get_annotated_mentions()
-        self.system_mentions = []
 
 
     def __get_annotated_mentions(self):
@@ -77,6 +131,20 @@ class Document(object):
 
         return annotated_mentions
 
+    def get_subtree_span(self, subtree_root, span, visited, without_serv=True):
+        #включаем последний флаг, если хотим убрать служебные части речи на первом уровне поддерева
+        if subtree_root not in self.children or len(self.children[subtree_root]) == 0 or visited[subtree_root]:
+            sp1 = spans.Span(subtree_root, subtree_root)
+            span = span.unite(sp1)
+            return span
+        #print(subtree_root, self.children[subtree_root])
+        visited[subtree_root] = True
+        for child in self.children[subtree_root]:
+            if not (without_serv and self.tokens_properties[child]["SyntParadigm"] in self.SERVICE_POS):
+                #print(child)
+                sp2 = self.get_subtree_span(child, span, visited, without_serv=False)
+                span = span.unite(sp2)
+        return span
 
 
 class Document_from_NLC(object):
@@ -158,13 +226,14 @@ class Document_from_NLC(object):
 
         self.system_mentions = []
 
-    def get_subtree_span(self, subtree_root, span, without_serv=True):
-        if subtree_root not in self.children or len(self.children[subtree_root]) == 0:
+    def get_subtree_span(self, subtree_root, span, visited, without_serv=True):
+        if subtree_root not in self.children or len(self.children[subtree_root]) == 0 or visited[subtree_root]:
             sp1 = spans.Span(subtree_root, subtree_root)
             span = span.unite(sp1)
             return span
+        visited[subtree_root] = True
         for child in self.children[subtree_root]:
             if not (without_serv and self.tokens_properties[child]["SP"] in self.SERVICE_POS):
-                sp2 = self.get_subtree_span(child, span, without_serv=False)
+                sp2 = self.get_subtree_span(child, span, visited, without_serv=False)
                 span = span.unite(sp2)
         return span
